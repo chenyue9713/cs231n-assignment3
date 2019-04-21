@@ -194,7 +194,11 @@ def word_embedding_forward(x, W):
     #                                                                            #
     # HINT: This can be done in one line using NumPy's array indexing.           #
     ##############################################################################
-    
+    # Ref: https://github.com/Burton2000/CS231n-2017/blob/master/assignment3/cs231n/rnn_layers.py#L219
+    # For each element in x, we get its corresponding word embedding vector from W.
+    out = W[x, :]
+
+    cache = x, W
     ##############################################################################
     #                               END OF YOUR CODE                             #
     ##############################################################################
@@ -223,7 +227,9 @@ def word_embedding_backward(dout, cache):
     # Note that words can appear more than once in a sequence.                   #
     # HINT: Look up the function np.add.at                                       #
     ##############################################################################
-    pass
+    x, W = cache
+    dW = np.zeros_like(W)
+    np.add.at(dW,x,dout)
     ##############################################################################
     #                               END OF YOUR CODE                             #
     ##############################################################################
@@ -271,7 +277,19 @@ def lstm_step_forward(x, prev_h, prev_c, Wx, Wh, b):
     # TODO: Implement the forward pass for a single timestep of an LSTM.        #
     # You may want to use the numerically stable sigmoid implementation above.  #
     #############################################################################
-    pass
+    N, H = prev_h.shape
+    
+    a = x.dot(Wx) + prev_h.dot(Wh) + b
+    input_gate = sigmoid(a[:,:H])
+    forget_gate = sigmoid(a[:,H:2*H])
+    output_gate = sigmoid(a[:,2*H:3*H])
+    gate_gate = np.tanh(a[:,3*H:])
+    
+    next_c = forget_gate*prev_c + input_gate*gate_gate
+    
+    next_h = output_gate*np.tanh(next_c)
+    
+    cache = (next_h, next_c, prev_c, prev_h, forget_gate, input_gate, output_gate, gate_gate, a, x, Wx, Wh)
     ##############################################################################
     #                               END OF YOUR CODE                             #
     ##############################################################################
@@ -303,7 +321,40 @@ def lstm_step_backward(dnext_h, dnext_c, cache):
     # HINT: For sigmoid and tanh you can compute local derivatives in terms of  #
     # the output value from the nonlinearity.                                   #
     #############################################################################
-    pass
+    next_h, next_c, prev_c, prev_h, forget_gate, input_gate, output_gate, gate_gate, a, x, Wx, Wh = cache
+    
+    N, D = x.shape
+    N, H = dnext_h.shape
+    
+    da = np.zeros((N, 4*H))
+    dx = np.zeros((N, D))
+    dprev_h = np.zeros((N, H))
+    dprev_c = np.zeros((N, H))
+    dWx = np.zeros((D, 4*H))
+    dWh = np.zeros((H, 4*H))
+    db = np.zeros((4*H))
+    
+    doutput_gate = dnext_h * np.tanh(next_c)
+    dnext_c = dnext_h * output_gate * (1 - np.tanh(next_c) * np.tanh(next_c)) + dnext_c
+    
+    dprev_c = dnext_c * forget_gate
+    dinput_gate = dnext_c * gate_gate
+    dforget_gate = dnext_c * prev_c
+    dgate_gate = dnext_c * input_gate
+    
+    da[:,:H] = dinput_gate * sigmoid(a[:,:H])*(1 - sigmoid(a[:,:H]))
+    da[:,H:2*H] = dforget_gate * sigmoid(a[:,H:2*H])*(1 - sigmoid(a[:,H:2*H]))
+    da[:,2*H:3*H] = doutput_gate * sigmoid(a[:,2*H:3*H])*(1 - sigmoid(a[:,2*H:3*H]))
+    da[:,3*H:] = dgate_gate * (1 - np.tanh(a[:,3*H:])*np.tanh(a[:,3*H:]))                                           
+    dx = da.dot(Wx.T)
+    dWx = x.T.dot(da)
+    dWh = prev_h.T.dot(da)
+    dprev_h = da.dot(Wh.T)
+    db = np.sum(da, axis=0)                                  
+    
+    
+    
+    
     ##############################################################################
     #                               END OF YOUR CODE                             #
     ##############################################################################
