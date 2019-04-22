@@ -148,20 +148,21 @@ class CaptioningRNN(object):
         
         if self.cell_type == 'rnn':
             hidden_rnn, cache_rnn = rnn_forward(captions_in_init, init_hidden_state, Wx, Wh, b)
+            scores, cache_scores = temporal_affine_forward(hidden_rnn, W_vocab, b_vocab)
         else:
-            pass
-        
-        scores, cache_scores = temporal_affine_forward(hidden_rnn, W_vocab, b_vocab)
+            hidden_lstm, cache_lstm = lstm_forward(captions_in_init, init_hidden_state, Wx, Wh, b)
+            scores, cache_scores = temporal_affine_forward(hidden_lstm, W_vocab, b_vocab)
+
         
         loss, dscores = temporal_softmax_loss(scores, captions_out, mask)
         
-        #Backward propagation
-        dhidden_rnn, dW_vocab, db_vocab = temporal_affine_backward(dscores, cache_scores)
-        
+        #Backward propagation 
         if self.cell_type == 'rnn':
+            dhidden_rnn, dW_vocab, db_vocab = temporal_affine_backward(dscores, cache_scores)
             dcaptions_in_init, dinit_hidden_state, dWx, dWh, db = rnn_backward(dhidden_rnn, cache_rnn)
         else:
-            pass
+            dhidden_lstm, dW_vocab, db_vocab = temporal_affine_backward(dscores, cache_scores)
+            dcaptions_in_init, dinit_hidden_state, dWx, dWh, db = lstm_backward(dhidden_lstm, cache_lstm)
         
         dW_embed = word_embedding_backward(dcaptions_in_init, cache_embed)
         
@@ -248,6 +249,7 @@ class CaptioningRNN(object):
         start_word_embed, _ = word_embedding_forward(self._start, W_embed)
         
         hidden_curr = init_hidden
+        cell_curr = np.zeros_like(hidden_curr)
         
         word_embed = start_word_embed
         
@@ -255,7 +257,7 @@ class CaptioningRNN(object):
             if self.cell_type == 'rnn':
                 hidden_curr, _ = rnn_step_forward(word_embed, hidden_curr, Wx, Wh, b)
             else:
-                pass
+                hidden_curr, cell_curr, _ = lstm_step_forward(word_embed, hidden_curr, cell_curr, Wx, Wh, b)
             
             step_scores,  _ = affine_forward(hidden_curr, W_vocab, b_vocab) 
             
